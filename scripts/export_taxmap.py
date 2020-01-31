@@ -3,7 +3,7 @@ import arcpy
 import os
 import sys
 
-# todo: externalize for use in other stratum repos
+# todo: externalize for possible re-use
 fcs = {'DOF_TAXMAP.Cadastral\DOF_TAXMAP.Tax_Lot_Polygon': 'Tax_Lot_Polygon',
        'DOF_TAXMAP.Cadastral\DOF_TAXMAP.Tax_Block_Polygon': 'Tax_Block_Polygon'} 
 

@@ -1,5 +1,7 @@
 # Stratum Taxmap
 
+Work in Progress DO NOT LOOK AT THIS REPO 
+
 Proof of concept to import NYC Digital Taxmap spatial data into a [stratum](https://github.com/mattyschell/stratum)
 deployment.
 
@@ -47,7 +49,7 @@ $ ../stratum_bldg/src/test/run_all_tests.sh taxmap_blue
 
 # TMI: Where Did This Data Come From?
 
-You shouldn't read this, it is radically transparent background describing how 
+You shouldn't read this, it is radically transparent detail describing how 
 the vegan data sausage is made.  But you're still reading for some reason.
 
 The New York City Department of Finance maintains maintains the New York City
@@ -61,57 +63,88 @@ database where it is locked up.
 
 Paths and file names below should be changed to protect the innocent.
 
-1. Using ESRI ArcCatalog or a script, export the data to the dreaded, but 
-interoperable, [shapefile](https://en.wikipedia.org/wiki/Shapefile) format.
+1. Using ESRI ArcCatalog or the included helper script export the data to the 
+dreaded, but interoperable, [shapefile](https://en.wikipedia.org/wiki/Shapefile) format.
+
+Requires python 3 and connectivity to the Dept. of Finance ESRI Geodatabase.
 
 ```
-> "C:\Program Files\ArcGIS\Pro\bin\Python\envs\arcgispro-py3\python" export_taxmap.py "C:/taxmap.sde" "D:/temp" 
+> "C:\Program Files\ArcGIS\Pro\bin\Python\envs\arcgispro-py3\python" /scripts/export_taxmap.py "C:/taxmap.sde" "D:/temp" 
 ```
 
-2. Load the dreaded but interoperable shapefile into a scratch PostGIS database
+2. Set up a scratch PostGIS database that mirrors [stratum](https://github.com/mattyschell/stratum).
+The sample steps that follow are on a PostGIS database named 'scratch' under a
+taxmap_blue schema. 
+
+```shell
+$ psql -c 'create database scratch;'
+$ export PGDATABASE=scratch
+$ export STRATUMPASSWORD=BeMyDataBae!
+$ ./sample_users.sh
+```
+
+3. Load the dreaded but interoperable shapefiles into the scratch PostGIS database
 using [shp2pgsql](https://postgis.net/docs/using_postgis_dbmanagement.html#shp2pgsql_usage)
+or the included helper script.  
+
+Requires bash and shp2pgsql on the path. SQL files will be written to the same 
+directory where the shapefiles are located.
 
 ```shell
-$ shp2pgsql -s 2263 -g shape /d/temp/xx.shp some_featureclasstemp.sql  > /d/temp/xx.sql
+$ ./scripts/shp2sql.sh /d/temp
 ```
 
-3. Run the sql produced to create a new table named buildingtemp. Column names 
-will be lopped off because of the dreaded but interoperable shapefile format. 
+4. Run the sql produced to create new tables named like xxxxtemp. Column 
+names will be lopped off because of the dreaded but interoperable shapefile format. 
 We could produce a mapping file to avoid the messy column names hitting the
-database but we are lazy and the SQL below accomplishes the same.
+database but we are lazy and prefer to manage things in SQL.
+
+Externalize connection details to a scratch database, the script calls psql.
 
 ```shell
-$ psql -q -f /d/temp/xx.sql
+$ export PGDATABASE=scratch
+$ export PGUSER=gis
+$ export PGPASSWORD=BeMyDataBaePostGis!
+$ ./scripts/sql2temptables.sh /d/temp
 ```
 
-4. Insert the scratch data into a more tidy form.  Eliminate buildings that
-are under construction, aka "million bins." Remove meaningless vertices and snap
-the results to a grid.  The exact parameters below are, and probably will be 
-forever, in flux. 
+5. Insert the scratch data into a more tidy final form. The exact parameters 
+buried in these sqls are for now in flux.  Review them.
 
-```sql
-
+```shell
+./scripts/temptables2finaltables.sh 
 ```
 
-5. Verify that all shapes are valid. If not, deal with them as you do.
+6. Deal with invalid shapes as you do. Some input shapes are invalid from the 
+source.  Some input shapes become invalid in step 4 where we perform some modest
+simplification and snapping.  
+
+Helper SQL reminders:
 
 ```sql
-select 
-    objectid
-   ,ST_IsValidReason(shape) 
-from 
-    xx 
+update xxxxx 
+set 
+    shape = st_makevalid(shape) 
 where 
-    st_isvalid(shape) <> true;
+    objectid = 12345;
+
+update xxxx 
+set shape =
+    (select st_makevalid(shape) 
+     from 
+          xxxxtemp 
+      where 
+          gid = 12345)
+where objectid = 67890;
 ```
 
-6. Dump it
+7. Dump it
 
 ```shell
-pg_dump -a -f /d/temp/x.sql -n taxmap_blue -O -S stratum -t bldg_blue.xx -x
+pg_dump -a -f /d/temp/tax_block_polygon.sql -O -t tax_block_polygon -x
 ```
 
-7. Zip it
+8. Zip it
 
 Leaving the process this way because I want human-readable .sql.  Compression
 levels above default 6 accomplish little.
